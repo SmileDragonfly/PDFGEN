@@ -10,30 +10,24 @@ STREAM_OBJ * PDF_CreateStreamObject(int streamIndex, int xOff, int yOff, CString
 	return streamObject;
 }
 
-PAGE_OBJ * PDF_CreatePageObject(int index)
+PAGE_OBJ * PDF_CreatePageObject(int index, PAGES_OBJ * pagesObj)
 {
 	PAGE_OBJ* pageObject = new PAGE_OBJ;
 	pageObject->Index = index;
-	pageObject->Parent = 2;
+	pageObject->Parent = pagesObj->Index;
 	pageObject->MediaBox.PageWidth = 595;
 	pageObject->MediaBox.PageHeight = 842;
+	PDF_AddPageIndexToPages(index, pagesObj);
 	return pageObject;
 }
 
 BOOL PDF_AddStreamObjectToPage(STREAM_OBJ * streamObj, PAGE_OBJ * pageObj)
 {
 	pageObj->ContentCount++;
-	pageObj->Content = (int**) realloc(pageObj->Content, pageObj->ContentCount);
-	if(pageObj->Content != NULL)
+	pageObj->Content = (int**)realloc(pageObj->Content, pageObj->ContentCount * sizeof(int*));
+	if (pageObj->Content != NULL)
 	{
-		pageObj->Content[pageObj->ContentCount - 1] = (int*) streamObj;
-		STREAM_OBJ * temp = (STREAM_OBJ*) (pageObj->Content[pageObj->ContentCount - 1]);
-		if (pageObj->ContentCount >= 2)
-		{
-			STREAM_OBJ * temp1 = (STREAM_OBJ*)(pageObj->Content[pageObj->ContentCount - 2]);
-			int a = 3;
-			a++;
-		}
+		pageObj->Content[pageObj->ContentCount - 1] = (int*)streamObj;
 		return TRUE;
 	}
 	else
@@ -45,8 +39,8 @@ BOOL PDF_AddStreamObjectToPage(STREAM_OBJ * streamObj, PAGE_OBJ * pageObj)
 BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj)
 {
 	pagesObj->KidCount++;
-	pagesObj->Kid = (int*) realloc(pagesObj->Kid, pagesObj->KidCount++);
-	if(pagesObj->Kid != NULL)
+	pagesObj->Kid = (int*)realloc(pagesObj->Kid, pagesObj->KidCount * sizeof(int));
+	if (pagesObj->Kid != NULL)
 	{
 		pagesObj->Kid[pagesObj->KidCount - 1] = pageIndex;
 		return TRUE;
@@ -100,7 +94,7 @@ void PDF_WriteBasicInfor(FILE * pFile)
 
 void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj)
 {
-	if(pageObj)
+	if (pageObj)
 	{
 		// Write page object
 		xref_off[pageObj->Index - 1] = ftell(pFile);
@@ -118,9 +112,9 @@ void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj)
 		fprintf(pFile, "  >>\r\n");
 		fprintf(pFile, ">>\r\n");
 		fprintf(pFile, "/Contents [\r\n");
-		for(int i = 0; i < pageObj->ContentCount; i++)
+		for (int i = 0; i < pageObj->ContentCount; i++)
 		{
-			STREAM_OBJ* temp = (STREAM_OBJ*) pageObj->Content[i];
+			STREAM_OBJ* temp = (STREAM_OBJ*)pageObj->Content[i];
 			fprintf(pFile, "%d 0 R\r\n", temp->Index);
 		}
 		fprintf(pFile, "]\r\n");
@@ -186,24 +180,46 @@ void main()
 {
 	PAGES_OBJ pagesObj;
 	pagesObj.Index = 2;
-	FILE* pFile = fopen("test.pdf","wb");
+	FILE* pFile = fopen("test.pdf", "wb");
 	PDF_WriteBasicInfor(pFile);
-	PAGE_OBJ * pageObj = PDF_CreatePageObject(5);
+	PAGE_OBJ * pageObj = PDF_CreatePageObject(5, &pagesObj);
 	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(6, 20, 827, L"this is nothing1"), pageObj);
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"PTM"), pageObj);
 	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(7, 20, 812, L"this is nothing2"), pageObj);
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"TMP"), pageObj);
 	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(8, 20, 797, L"this is nothing3"), pageObj);
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"MTP"), pageObj);
 	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(9, 20, 782, L"this is nothing4"), pageObj);
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"----------------"), pageObj);
 	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(10, 20, 767, L"this is nothing5"), pageObj);
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"/////////////////"), pageObj);
 	xref++;
-	PDF_WritePageObject(pFile, pageObj);	
-	pagesObj.KidCount++;
-	pagesObj.Kid = (int*) realloc(pagesObj.Kid, pagesObj.KidCount);
-	pagesObj.Kid[pagesObj.KidCount - 1] = pageObj->Index;
+	PAGE_OBJ * pageObj1 = PDF_CreatePageObject(xref, &pagesObj);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"this is nothing1"), pageObj1);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"this is nothing2"), pageObj1);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"this is nothing3"), pageObj1);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"this is nothing4"), pageObj1);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"this is nothing5"), pageObj1);
+	xref++;
+	PAGE_OBJ * pageObj2 = PDF_CreatePageObject(xref, &pagesObj);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"this is nothing1"), pageObj2);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"this is nothing2"), pageObj2);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"this is nothing3"), pageObj2);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"this is nothing4"), pageObj2);
+	xref++;
+	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"this is nothing5"), pageObj2);
+	PDF_WritePageObject(pFile, pageObj);
+	PDF_WritePageObject(pFile, pageObj1);
+	PDF_WritePageObject(pFile, pageObj2);
 	PDF_WritePagesObject(pFile, &pagesObj);
 	PDF_WriteXrefAndTrailer(pFile);
 	fclose(pFile);

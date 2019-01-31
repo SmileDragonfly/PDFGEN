@@ -76,8 +76,8 @@ struct STREAM_OBJ
 
 
 STREAM_OBJ * PDF_CreateStreamObject(int streamIndex, int xOff, int yOff, CString data);
-PAGE_OBJ * PDF_CreatePageObject(int pageIndex);
-BOOL PDF_AddStreamObjectToPage(STREAM_OBJ* streamObj,PAGE_OBJ* pageObj);
+PAGE_OBJ * PDF_CreatePageObject(int pageIndex, PAGES_OBJ * pagesObj);
+BOOL PDF_AddStreamObjectToPage(STREAM_OBJ* streamObj, PAGE_OBJ* pageObj);
 BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj);
 void PDF_WriteBasicInfor(FILE* pFile);
 void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj);
