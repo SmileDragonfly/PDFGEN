@@ -2,6 +2,7 @@
 #define _AFXDLL
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <afx.h>
 
 struct MEDIA_BOX
@@ -74,15 +75,24 @@ struct STREAM_OBJ
 // Trailer
 // StartXref
 
-
-STREAM_OBJ * PDF_CreateStreamObject(int streamIndex, int xOff, int yOff, CString data);
-PAGE_OBJ * PDF_CreatePageObject(int pageIndex, PAGES_OBJ * pagesObj);
-BOOL PDF_AddStreamObjectToPage(STREAM_OBJ* streamObj, PAGE_OBJ* pageObj);
-BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj);
-void PDF_WriteBasicInfor(FILE* pFile);
-void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj);
-void PDF_WritePagesObject(FILE* pFile, PAGES_OBJ * pagesObj);
-void PDF_WriteXrefAndTrailer(FILE* pFile);
-int xref = 5;
-int xref_off[20];
-int start_xref;
+class CPDFGEN
+{
+public:
+	CPDFGEN();
+	PAGE_OBJ * PDF_CreatePageObject();
+	BOOL PDF_AddStreamObjectToPage(int xOff, int yOff, CString data);
+	void PDF_WriteBasicInfor(FILE* pFile);
+	void PDF_WritePageObject(FILE* pFile);
+	void PDF_WritePagesObject(FILE* pFile);
+	void PDF_WriteXrefAndTrailer(FILE* pFile);
+protected:
+	STREAM_OBJ * PDF_CreateStreamObject(int xOff, int yOff, CString data);
+	BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj);
+	void PDF_DeleteCurrentPage();
+	void PDF_DeletePagesObject();
+	int m_xref;
+	int m_startXrefAddress;
+	std::vector<int> m_xrefOffset;
+	PAGES_OBJ m_pagesObj;
+	PAGE_OBJ* m_currentPageObj;
+};

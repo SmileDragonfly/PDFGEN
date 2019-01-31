@@ -1,33 +1,42 @@
 #include "PDFGEN.h"
-
-STREAM_OBJ * PDF_CreateStreamObject(int streamIndex, int xOff, int yOff, CString data)
+CPDFGEN::CPDFGEN()
 {
+	m_xref = 0;
+	m_startXrefAddress = 0;
+	m_pagesObj.Index = 2;
+}
+STREAM_OBJ * CPDFGEN::PDF_CreateStreamObject(int xOff, int yOff, CString data)
+{
+	m_xref++;
 	STREAM_OBJ* streamObject = new STREAM_OBJ;
-	streamObject->Index = streamIndex;
+	streamObject->Index = m_xref;
 	streamObject->Offset.XOff = xOff;
 	streamObject->Offset.YOff = yOff;
 	streamObject->Data = data;
 	return streamObject;
 }
 
-PAGE_OBJ * PDF_CreatePageObject(int index, PAGES_OBJ * pagesObj)
+PAGE_OBJ * CPDFGEN::PDF_CreatePageObject()
 {
+	m_xref++;
 	PAGE_OBJ* pageObject = new PAGE_OBJ;
-	pageObject->Index = index;
-	pageObject->Parent = pagesObj->Index;
+	pageObject->Index = m_xref;
+	pageObject->Parent = m_pagesObj.Index;
 	pageObject->MediaBox.PageWidth = 595;
 	pageObject->MediaBox.PageHeight = 842;
-	PDF_AddPageIndexToPages(index, pagesObj);
+	PDF_AddPageIndexToPages(m_xref, &m_pagesObj);
+	m_currentPageObj = pageObject;
 	return pageObject;
 }
 
-BOOL PDF_AddStreamObjectToPage(STREAM_OBJ * streamObj, PAGE_OBJ * pageObj)
+BOOL CPDFGEN::PDF_AddStreamObjectToPage(int xOff, int yOff, CString data)
 {
-	pageObj->ContentCount++;
-	pageObj->Content = (int**)realloc(pageObj->Content, pageObj->ContentCount * sizeof(int*));
-	if (pageObj->Content != NULL)
+	STREAM_OBJ* streamObj = PDF_CreateStreamObject(xOff,yOff,data);
+	m_currentPageObj->ContentCount++;
+	m_currentPageObj->Content = (int**)realloc(m_currentPageObj->Content, m_currentPageObj->ContentCount * sizeof(int*));
+	if (m_currentPageObj->Content != NULL)
 	{
-		pageObj->Content[pageObj->ContentCount - 1] = (int*)streamObj;
+		m_currentPageObj->Content[m_currentPageObj->ContentCount - 1] = (int*)streamObj;
 		return TRUE;
 	}
 	else
@@ -36,7 +45,7 @@ BOOL PDF_AddStreamObjectToPage(STREAM_OBJ * streamObj, PAGE_OBJ * pageObj)
 	}
 }
 
-BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj)
+BOOL CPDFGEN::PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj)
 {
 	pagesObj->KidCount++;
 	pagesObj->Kid = (int*)realloc(pagesObj->Kid, pagesObj->KidCount * sizeof(int));
@@ -51,14 +60,33 @@ BOOL PDF_AddPageIndexToPages(int pageIndex, PAGES_OBJ * pagesObj)
 	}
 }
 
-void PDF_WriteBasicInfor(FILE * pFile)
+void CPDFGEN::PDF_DeleteCurrentPage()
+{
+	if (m_currentPageObj)
+	{
+		for (int i = 0; i < m_currentPageObj->ContentCount; i++)
+		{
+			STREAM_OBJ* streamObjTemp = (STREAM_OBJ*) m_currentPageObj->Content[i];
+			delete streamObjTemp;
+		}
+		free(m_currentPageObj->Content);
+	}
+}
+
+void CPDFGEN::PDF_DeletePagesObject()
+{
+	free(m_pagesObj.Kid);
+}
+
+void CPDFGEN::PDF_WriteBasicInfor(FILE * pFile)
 {
 	// Write Header
 	fprintf(pFile, "%%PDF-1.2\r\n");
 	// Hibit bytes
 	fprintf(pFile, "%c%c%c%c%c\r\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
 	// Write infor object
-	xref_off[0] = ftell(pFile);
+	m_xrefOffset.push_back(ftell(pFile));
+	m_xref++;
 	fprintf(pFile, "1 0 obj\r\n");
 	fprintf(pFile,
 		"<<\r\n"
@@ -71,7 +99,8 @@ void PDF_WriteBasicInfor(FILE * pFile)
 		">>\r\n");
 	fprintf(pFile, "endobj\r\n");
 	// Write catalog object
-	xref_off[2] = ftell(pFile);
+	m_xref = m_xref + 2;
+	m_xrefOffset.push_back(ftell(pFile));
 	fprintf(pFile, "3 0 obj\r\n");
 	fprintf(pFile, "<<\r\n"
 		"/Type /Catalog\r\n");
@@ -80,7 +109,8 @@ void PDF_WriteBasicInfor(FILE * pFile)
 		">>\r\n");
 	fprintf(pFile, "endobj\r\n");
 	// Write font object
-	xref_off[3] = ftell(pFile);
+	m_xrefOffset.push_back(ftell(pFile));
+	m_xref++;
 	fprintf(pFile, "4 0 obj\r\n");
 	fprintf(pFile,
 		"<<\r\n"
@@ -92,39 +122,39 @@ void PDF_WriteBasicInfor(FILE * pFile)
 	fprintf(pFile, "endobj\r\n");
 }
 
-void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj)
+void CPDFGEN::PDF_WritePageObject(FILE* pFile)
 {
-	if (pageObj)
+	if (m_currentPageObj)
 	{
 		// Write page object
-		xref_off[pageObj->Index - 1] = ftell(pFile);
-		fprintf(pFile, "%d 0 obj\r\n", pageObj->Index);
+		m_xrefOffset.push_back(ftell(pFile));
+		fprintf(pFile, "%d 0 obj\r\n", m_currentPageObj->Index);
 		fprintf(pFile,
 			"<<\r\n"
 			"/Type /Page\r\n"
 			"/Parent %d 0 R\r\n",
-			pageObj->Parent);
-		fprintf(pFile, "/MediaBox [0 0 %d %d]\r\n", pageObj->MediaBox.PageWidth,
-			pageObj->MediaBox.PageHeight);
+			m_currentPageObj->Parent);
+		fprintf(pFile, "/MediaBox [0 0 %d %d]\r\n", m_currentPageObj->MediaBox.PageWidth,
+			m_currentPageObj->MediaBox.PageHeight);
 		fprintf(pFile, "/Resources <<\r\n");
 		fprintf(pFile, "  /Font <<\r\n");
 		fprintf(pFile, "    /F1 4 0 R\r\n");
 		fprintf(pFile, "  >>\r\n");
 		fprintf(pFile, ">>\r\n");
 		fprintf(pFile, "/Contents [\r\n");
-		for (int i = 0; i < pageObj->ContentCount; i++)
+		for (int i = 0; i < m_currentPageObj->ContentCount; i++)
 		{
-			STREAM_OBJ* temp = (STREAM_OBJ*)pageObj->Content[i];
+			STREAM_OBJ* temp = (STREAM_OBJ*)m_currentPageObj->Content[i];
 			fprintf(pFile, "%d 0 R\r\n", temp->Index);
 		}
 		fprintf(pFile, "]\r\n");
 		fprintf(pFile, ">>\r\n");
 		fprintf(pFile, "endobj\r\n");
 		// Write stream object
-		for (int i = 0; i < pageObj->ContentCount; i++)
+		for (int i = 0; i < m_currentPageObj->ContentCount; i++)
 		{
-			STREAM_OBJ* temp = (STREAM_OBJ*)pageObj->Content[i];
-			xref_off[temp->Index - 1] = ftell(pFile);
+			STREAM_OBJ* temp = (STREAM_OBJ*)m_currentPageObj->Content[i];
+			m_xrefOffset.push_back(ftell(pFile));
 			fprintf(pFile, "%d 0 obj\r\n", temp->Index);
 			fprintf(pFile, "<< /Length %d >>stream\r\n", temp->Data.GetLength() + 73);
 			CT2A strTemp(temp->Data);
@@ -132,95 +162,80 @@ void PDF_WritePageObject(FILE* pFile, PAGE_OBJ * pageObj)
 			fprintf(pFile, "endstream\r\n");
 			fprintf(pFile, "endobj\r\n");
 		}
+		PDF_DeleteCurrentPage();
 	}
 }
 
-void PDF_WritePagesObject(FILE * pFile, PAGES_OBJ * pagesObj)
+void CPDFGEN::PDF_WritePagesObject(FILE * pFile)
 {
-	xref_off[1] = ftell(pFile);
+	m_xrefOffset.push_back(ftell(pFile));
 	fprintf(pFile, "2 0 obj\r\n");
 	fprintf(pFile, "<<\r\n"
 		"/Type /Pages\r\n"
 		"/Kids [ ");
-	for (int i = 0; i < pagesObj->KidCount; i++)
+	for (int i = 0; i < m_pagesObj.KidCount; i++)
 	{
-		fprintf(pFile, "%d 0 R ", pagesObj->Kid[i]);
+		fprintf(pFile, "%d 0 R ", m_pagesObj.Kid[i]);
 	}
 	fprintf(pFile, "]\r\n");
-	fprintf(pFile, "/Count %d\r\n", pagesObj->KidCount);
+	fprintf(pFile, "/Count %d\r\n", m_pagesObj.KidCount);
 	fprintf(pFile, ">>\r\n");
+	PDF_DeletePagesObject();
 }
 
-void PDF_WriteXrefAndTrailer(FILE * pFile)
+void CPDFGEN::PDF_WriteXrefAndTrailer(FILE * pFile)
 {
-	start_xref = ftell(pFile);
+	m_startXrefAddress = ftell(pFile);
 	fprintf(pFile, "xref\r\n");
-	fprintf(pFile, "0 %d\r\n", xref);
+	fprintf(pFile, "0 %d\r\n", m_xref);
 	fprintf(pFile, "0000000000 65535 f\r\n");
-	for (int i = 0; i < xref; i++)
+	for (int i = 0; i < m_xref; i++)
 	{
-		fprintf(pFile, "%10.10d 00000 n\r\n", xref_off[i]);
+		if (i == 1)
+		{
+			fprintf(pFile, "%10.10d 00000 n\r\n", m_xrefOffset.at(m_xref - 1));
+		}
+		else if (i == (m_xref - 1))
+		{
+			fprintf(pFile, "%10.10d 00000 n\r\n", m_xrefOffset.at(1));
+		}
+		else
+		{
+			fprintf(pFile, "%10.10d 00000 n\r\n", m_xrefOffset.at(i));
+		}
 	}
 	fprintf(pFile,
 		"trailer\r\n"
 		"<<\r\n"
 		"/Size %d\r\n",
-		xref);
+		m_xref);
 	fprintf(pFile, "/Root 3 0 R\r\n");
 	fprintf(pFile, "/Info 1 0 R\r\n");
 	/* FIXME: Not actually generating a unique ID */
 	fprintf(pFile, "/ID [<%16.16x> <%16.16x>]\r\n", 0x123, 0x123);
 	fprintf(pFile, ">>\r\n"
 		"startxref\r\n");
-	fprintf(pFile, "%d\r\n", start_xref);
+	fprintf(pFile, "%d\r\n", m_startXrefAddress);
 	fprintf(pFile, "%%%%EOF\r\n");
 }
 
 void main()
 {
-	PAGES_OBJ pagesObj;
-	pagesObj.Index = 2;
 	FILE* pFile = fopen("test.pdf", "wb");
-	PDF_WriteBasicInfor(pFile);
-	PAGE_OBJ * pageObj = PDF_CreatePageObject(5, &pagesObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"PTM"), pageObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"TMP"), pageObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"MTP"), pageObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"----------------"), pageObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"/////////////////"), pageObj);
-	xref++;
-	PAGE_OBJ * pageObj1 = PDF_CreatePageObject(xref, &pagesObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"this is nothing1"), pageObj1);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"this is nothing2"), pageObj1);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"this is nothing3"), pageObj1);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"this is nothing4"), pageObj1);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"this is nothing5"), pageObj1);
-	xref++;
-	PAGE_OBJ * pageObj2 = PDF_CreatePageObject(xref, &pagesObj);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 827, L"this is nothing1"), pageObj2);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 812, L"this is nothing2"), pageObj2);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 797, L"this is nothing3"), pageObj2);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 782, L"this is nothing4"), pageObj2);
-	xref++;
-	PDF_AddStreamObjectToPage(PDF_CreateStreamObject(xref, 20, 767, L"this is nothing5"), pageObj2);
-	PDF_WritePageObject(pFile, pageObj);
-	PDF_WritePageObject(pFile, pageObj1);
-	PDF_WritePageObject(pFile, pageObj2);
-	PDF_WritePagesObject(pFile, &pagesObj);
-	PDF_WriteXrefAndTrailer(pFile);
+	CPDFGEN pdfObj;
+	pdfObj.PDF_WriteBasicInfor(pFile);
+	for(int i = 0; i < 100; i++)
+	{
+		pdfObj.PDF_CreatePageObject();
+		pdfObj.PDF_AddStreamObjectToPage(20, 827, L"Toi lac quan giua dam dong");
+		pdfObj.PDF_AddStreamObjectToPage(20, 812, L"Nhung khi mot minh thi lai khong");
+		pdfObj.PDF_AddStreamObjectToPage(20, 797, L"Co to ra la minh on nhung sau ben trong nuoc mat la bien rong");
+		pdfObj.PDF_AddStreamObjectToPage(20, 782, L"Lam luc chi muon co ai do");
+		pdfObj.PDF_AddStreamObjectToPage(20, 767, L"Dang tay om lay toi vao long");
+		pdfObj.PDF_AddStreamObjectToPage(20, 752, L"Cho tieng cuoi trong mat duoc vang vong co don 1 lan roi khoi nhung khoang trong");
+		pdfObj.PDF_WritePageObject(pFile);
+	}
+	pdfObj.PDF_WritePagesObject(pFile);
+	pdfObj.PDF_WriteXrefAndTrailer(pFile);
 	fclose(pFile);
 }
